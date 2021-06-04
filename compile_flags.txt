@@ -1,0 +1,4 @@
+-Wall
+-pedantic
+-Isrc/days
+-Ilibs/hashmap
