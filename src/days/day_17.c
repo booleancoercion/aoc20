@@ -56,7 +56,7 @@ void day_17() {
         advance_simulation(simulation, &minmax);
     }
 
-    printf("The number of active cells after 6 iterations: %zu",
+    printf("The number of active cells after 6 iterations: %zu\n",
            hashmap_count(simulation));
 
     hashmap_free(simulation);
