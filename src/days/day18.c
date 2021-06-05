@@ -4,11 +4,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum op { NONE, ADD, MUL };
 
 static long compute(const char *str, size_t len);
-static void char_error(const char *str, size_t idx);
+static void char_error(const char *str, size_t len, size_t idx);
 static bool performop(long *acc, enum op *nextop, long val);
 static size_t find_next_matching_paren(const char *str, size_t idx);
 
@@ -24,12 +25,16 @@ void day18() {
     long sum = 0;
 
     char *line;
-    size_t len;
+    size_t size;
+    ssize_t len;
 
-    while(getline(&line, &len, input) > 1) { // >1 because newline
-        sum += compute(line, len);
-        free(line);
+    while((len = getline(&line, &size, input)) > 1) { // >1 because newline
+        sum += compute(line, len - 1);                // remove the newline
     }
+
+    printf("The sum of all expressions is %ld\n", sum);
+
+    free(line);
 }
 
 static long compute(const char *str, size_t len) {
@@ -44,7 +49,17 @@ static long compute(const char *str, size_t len) {
         if(isdigit(ch)) {
             int digit = ch - '0';
             if(!performop(&acc, &nextop, digit)) {
-                char_error(str, idx);
+                char_error(str, len, idx);
+            }
+        } else if(ch == '+' || ch == '*') {
+            if(nextop != NONE) {
+                char_error(str, len, idx);
+            }
+
+            if(ch == '+') {
+                nextop = ADD;
+            } else {
+                nextop = MUL;
             }
         } else if(ch == '(') {
             size_t next_paren = find_next_matching_paren(str, idx);
@@ -58,13 +73,16 @@ static long compute(const char *str, size_t len) {
             size_t newlen = next_paren - idx - 1;
             long val = compute(str + idx + 1, newlen);
             if(!performop(&acc, &nextop, val)) {
-                char_error(str, idx);
+                char_error(str, len, idx);
             }
 
             idx = next_paren + 1;
+            continue;
         } else if(!isspace(ch)) {
-            char_error(str, idx);
+            char_error(str, len, idx);
         }
+
+        idx += 1;
     }
 
     return acc;
@@ -72,7 +90,7 @@ static long compute(const char *str, size_t len) {
 
 static bool performop(long *acc, enum op *nextop, long val) {
     if(*acc < 0) {
-        if(nextop != NONE) {
+        if(*nextop != NONE) {
             return false;
         }
 
@@ -118,12 +136,12 @@ static size_t find_next_matching_paren(const char *str, size_t idx) {
     return 0; // not found
 }
 
-static void char_error(const char *str, size_t idx) {
+static void char_error(const char *str, size_t len, size_t idx) {
     char ch = str[idx];
 
     printf("Error: encountered invalid character while computing the "
-           "following expression: [%s] (ch=%c, idx=%zu)",
-           str, ch, idx);
+           "following expression: [%.*s] (ch=%c, idx=%zu)\n",
+           (int)len, str, ch, idx);
 
     exit(1);
 }
