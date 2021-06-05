@@ -14,9 +14,12 @@ int main(int argc, char **argv) {
 
 void solve_day(int day) {
     switch(day) {
-    default:
     case 17:
         day17();
+        break;
+    default:
+    case 18:
+        day18();
         break;
     }
 }
