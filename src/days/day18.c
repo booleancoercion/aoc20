@@ -26,7 +26,8 @@ void day18() {
 
     char *line;
     size_t size;
-    ssize_t len;
+    ssize_t
+        len; // signed because otherwise this will underflow when we're done :)
 
     while((len = getline(&line, &size, input)) > 1) { // >1 because newline
         sum += compute(line, len - 1);                // remove the newline
