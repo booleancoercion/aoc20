@@ -1,5 +1,9 @@
 #include "aoc20.h"
 
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 void solve_day(int day);
 
 int main(int argc, char **argv) {

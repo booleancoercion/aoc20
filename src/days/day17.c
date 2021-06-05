@@ -1,6 +1,10 @@
 #include "aoc20.h"
 #include "hashmap.h"
 
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 typedef struct hashmap hashmap;
 
 typedef union point4 {
