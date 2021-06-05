@@ -21,6 +21,8 @@ typedef struct minmax_info {
 
 static void handle_input(hashmap *map, minmax_info *mm);
 static void advance_simulation(hashmap *map, minmax_info *mm);
+static int count_neighbors(hashmap *map, const point3 *p);
+static void update_minmax(minmax_info *mm, const point3 *p);
 
 static int point3_compare(const void *a_void, const void *b_void, void *udata) {
     const point3 *a = a_void;
@@ -54,6 +56,9 @@ void day_17() {
         advance_simulation(simulation, &minmax);
     }
 
+    printf("The number of active cells after 6 iterations: %zu",
+           hashmap_count(simulation));
+
     hashmap_free(simulation);
 }
 
@@ -72,16 +77,62 @@ static void advance_simulation(hashmap *map, minmax_info *mm) {
 
     hashmap_scan(map, copy_iter, copy);
 
-    for(int x = mm->min.x - 1; x <= mm->max.x + 1; x++) {
-        for(int y = mm->min.y - 1; y <= mm->max.y + 1; y++) {
-            for(int z = mm->min.z - 1; z <= mm->max.z + 1; z++) {
+    int minx = mm->min.x, miny = mm->min.y, minz = mm->min.z;
+    int maxx = mm->max.x, maxy = mm->max.y, maxz = mm->max.z;
+
+    for(int x = minx - 1; x <= maxx + 1; x++) {
+        for(int y = miny - 1; y <= maxy + 1; y++) {
+            for(int z = minz - 1; z <= maxz + 1; z++) {
                 // check if (x, y, z) needs to be on or off
                 // update (x, y, z) and possibly minmax bounds
+
+                point3 p = {.x = x, .y = y, .z = z};
+                bool active = hashmap_get(copy, &p) != NULL;
+                int neighbors = count_neighbors(copy, &p);
+
+                if(active && neighbors != 2 && neighbors != 3) {
+                    hashmap_delete(map, &p);
+                } else if(!active && neighbors == 3) {
+                    hashmap_set(map, &p);
+                    update_minmax(mm, &p);
+                }
             }
         }
     }
 
     hashmap_free(copy);
+}
+
+static void update_minmax(minmax_info *mm, const point3 *p) {
+    for(int i = 0; i < 3; i++) {
+        if(p->co[i] < mm->min.co[i]) {
+            mm->min.co[i] = p->co[i];
+        }
+        if(p->co[i] > mm->max.co[i]) {
+            mm->max.co[i] = p->co[i];
+        }
+    }
+}
+
+static int count_neighbors(hashmap *map, const point3 *p) {
+    int x = p->x, y = p->y, z = p->z, counter = 0;
+
+    for(int dx = -1; dx <= 1; dx++) {
+        for(int dy = -1; dy <= 1; dy++) {
+            for(int dz = -1; dz <= 1; dz++) {
+                if(dx == 0 && dy == 0 && dz == 0) {
+                    continue;
+                }
+
+                point3 temp = {.x = x + dx, .y = y + dy, .z = z + dz};
+                if(hashmap_get(map, &temp) != NULL) {
+                    counter += 1;
+                }
+            }
+        }
+    }
+
+    return counter;
 }
 
 static void handle_input(hashmap *map, minmax_info *mm) {
