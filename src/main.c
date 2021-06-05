@@ -16,7 +16,8 @@ void solve_day(int day) {
     switch(day) {
     default:
     case 17:
-        day_17();
+        day17_part1();
+        day17_part2();
         break;
     }
 }

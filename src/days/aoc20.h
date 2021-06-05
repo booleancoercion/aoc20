@@ -5,6 +5,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 
-void day_17();
+void day17_part1();
+void day17_part2();
 
 #endif

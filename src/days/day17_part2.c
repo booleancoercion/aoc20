@@ -4,31 +4,32 @@
 
 typedef struct hashmap hashmap;
 
-typedef union point3 {
+typedef union point4 {
     struct {
         int x;
         int y;
         int z;
+        int w;
     };
 
-    int co[3];
-} point3;
+    int co[4];
+} point4;
 
 typedef struct minmax_info {
-    point3 min;
-    point3 max;
+    point4 min;
+    point4 max;
 } minmax_info;
 
 static void handle_input(hashmap *map, minmax_info *mm);
 static void advance_simulation(hashmap *map, minmax_info *mm);
-static int count_neighbors(hashmap *map, const point3 *p);
-static void update_minmax(minmax_info *mm, const point3 *p);
+static int count_neighbors(hashmap *map, const point4 *p);
+static void update_minmax(minmax_info *mm, const point4 *p);
 
-static int point3_compare(const void *a_void, const void *b_void, void *udata) {
-    const point3 *a = a_void;
-    const point3 *b = b_void;
+static int point4_compare(const void *a_void, const void *b_void, void *udata) {
+    const point4 *a = a_void;
+    const point4 *b = b_void;
 
-    for(int i = 0; i < 2; i++) {
+    for(int i = 0; i < 4; i++) {
         int comp = (a->co[i] > b->co[i]) - (a->co[i] < b->co[i]);
 
         if(comp) {
@@ -39,17 +40,17 @@ static int point3_compare(const void *a_void, const void *b_void, void *udata) {
     return 0;
 }
 
-static uint64_t point3_hash(const void *item, uint64_t seed0, uint64_t seed1) {
-    return hashmap_sip(item, sizeof(point3), seed0, seed1);
+static uint64_t point4_hash(const void *item, uint64_t seed0, uint64_t seed1) {
+    return hashmap_sip(item, sizeof(point4), seed0, seed1);
 }
 
-void day_17() {
-    printf("Day 17\n\n");
+void day17_part2() {
+    printf("Day 17 - Part 2\n\n");
 
     hashmap *simulation =
-        hashmap_new(sizeof(point3), 0, 0, 0, point3_hash, point3_compare, NULL);
+        hashmap_new(sizeof(point4), 0, 0, 0, point4_hash, point4_compare, NULL);
 
-    minmax_info minmax = {{{0, 0, 0}}, {{0, 0, 0}}};
+    minmax_info minmax = {{{0, 0, 0, 0}}, {{0, 0, 0, 0}}};
     handle_input(simulation, &minmax);
 
     for(int i = 0; i < 6; i++) {
@@ -73,28 +74,30 @@ static bool copy_iter(const void *item, void *udata) {
 
 static void advance_simulation(hashmap *map, minmax_info *mm) {
     hashmap *copy =
-        hashmap_new(sizeof(point3), 0, 0, 0, point3_hash, point3_compare, NULL);
+        hashmap_new(sizeof(point4), 0, 0, 0, point4_hash, point4_compare, NULL);
 
     hashmap_scan(map, copy_iter, copy);
 
-    int minx = mm->min.x, miny = mm->min.y, minz = mm->min.z;
-    int maxx = mm->max.x, maxy = mm->max.y, maxz = mm->max.z;
+    int minx = mm->min.x, miny = mm->min.y, minz = mm->min.z, minw = mm->min.w;
+    int maxx = mm->max.x, maxy = mm->max.y, maxz = mm->max.z, maxw = mm->max.w;
 
     for(int x = minx - 1; x <= maxx + 1; x++) {
         for(int y = miny - 1; y <= maxy + 1; y++) {
             for(int z = minz - 1; z <= maxz + 1; z++) {
-                // check if (x, y, z) needs to be on or off
-                // update (x, y, z) and possibly minmax bounds
+                for(int w = minw - 1; w <= maxw + 1; w++) {
+                    // check if P needs to be on or off
+                    // update P and possibly minmax bounds
 
-                point3 p = {.x = x, .y = y, .z = z};
-                bool active = hashmap_get(copy, &p) != NULL;
-                int neighbors = count_neighbors(copy, &p);
+                    point4 p = {.x = x, .y = y, .z = z, .w = w};
+                    bool active = hashmap_get(copy, &p) != NULL;
+                    int neighbors = count_neighbors(copy, &p);
 
-                if(active && neighbors != 2 && neighbors != 3) {
-                    hashmap_delete(map, &p);
-                } else if(!active && neighbors == 3) {
-                    hashmap_set(map, &p);
-                    update_minmax(mm, &p);
+                    if(active && neighbors != 2 && neighbors != 3) {
+                        hashmap_delete(map, &p);
+                    } else if(!active && neighbors == 3) {
+                        hashmap_set(map, &p);
+                        update_minmax(mm, &p);
+                    }
                 }
             }
         }
@@ -103,8 +106,8 @@ static void advance_simulation(hashmap *map, minmax_info *mm) {
     hashmap_free(copy);
 }
 
-static void update_minmax(minmax_info *mm, const point3 *p) {
-    for(int i = 0; i < 3; i++) {
+static void update_minmax(minmax_info *mm, const point4 *p) {
+    for(int i = 0; i < 4; i++) {
         if(p->co[i] < mm->min.co[i]) {
             mm->min.co[i] = p->co[i];
         }
@@ -114,19 +117,22 @@ static void update_minmax(minmax_info *mm, const point3 *p) {
     }
 }
 
-static int count_neighbors(hashmap *map, const point3 *p) {
-    int x = p->x, y = p->y, z = p->z, counter = 0;
+static int count_neighbors(hashmap *map, const point4 *p) {
+    int x = p->x, y = p->y, z = p->z, w = p->w, counter = 0;
 
     for(int dx = -1; dx <= 1; dx++) {
         for(int dy = -1; dy <= 1; dy++) {
             for(int dz = -1; dz <= 1; dz++) {
-                if(dx == 0 && dy == 0 && dz == 0) {
-                    continue;
-                }
+                for(int dw = -1; dw <= 1; dw++) {
+                    if(dx == 0 && dy == 0 && dz == 0 && dw == 0) {
+                        continue;
+                    }
 
-                point3 temp = {.x = x + dx, .y = y + dy, .z = z + dz};
-                if(hashmap_get(map, &temp) != NULL) {
-                    counter += 1;
+                    point4 temp = {
+                        .x = x + dx, .y = y + dy, .z = z + dz, .w = w + dw};
+                    if(hashmap_get(map, &temp) != NULL) {
+                        counter += 1;
+                    }
                 }
             }
         }
@@ -150,7 +156,7 @@ static void handle_input(hashmap *map, minmax_info *mm) {
             j++;
         } else {
             if(ch == '#') {
-                point3 p = {.x = i, .y = j, .z = 0};
+                point4 p = {.x = i, .y = j, .z = 0, .w = 0};
                 hashmap_set(map, &p);
 
                 if(mm->max.x < i) {
