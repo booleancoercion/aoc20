@@ -30,10 +30,10 @@ void day18() {
     long naive_sum = 0;
     long smart_sum = 0;
 
-    char *line;
-    size_t size;
-    ssize_t
-        len; // signed because otherwise this will underflow when we're done :)
+    char *line = NULL;
+    size_t size = 0;
+    // signed because otherwise this will underflow when we're done :)
+    ssize_t len = 0;
 
     while((len = getline(&line, &size, input)) > 1) { // >1 because newline
         naive_sum += compute_naive(line, len - 1); // -1 to remove the newline
