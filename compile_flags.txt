@@ -2,6 +2,7 @@
 -pedantic
 -Isrc/days
 -Ilibs/hashmap
+-Ilibs/linkedlist
 -g
 -o
 ./aoc

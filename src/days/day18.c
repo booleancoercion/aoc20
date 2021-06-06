@@ -1,4 +1,5 @@
 #include "aoc20.h"
+#include "linkedlist.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -10,9 +11,10 @@ enum op { NONE, ADD, MUL };
 
 static long compute_naive(const char *str, size_t len);
 static long compute_smart(const char *str, size_t len);
-static void char_error(const char *str, size_t len, size_t idx);
 static bool performop(long *acc, enum op *nextop, long val);
 static size_t find_next_matching_paren(const char *str, size_t idx);
+static void char_error(const char *str, size_t len, size_t idx);
+static void eval_error(const char *str, size_t len);
 
 void day18() {
     FILE *input = fopen("inputs/day18.txt", "r");
@@ -119,7 +121,97 @@ static bool performop(long *acc, enum op *nextop, long val) {
     return true;
 }
 
-static long compute_smart(const char *str, size_t len) {}
+enum atomtype { OP, VALUE };
+
+struct atom {
+    enum atomtype type;
+    union {
+        enum op op;
+        long value;
+    };
+};
+
+static long compute_smart(const char *str, size_t len) {
+    struct linkedlist *atomlist = linkedlist_init(sizeof(struct atom));
+
+    size_t idx = 0;
+    while(idx < len) {
+        char ch = str[idx];
+
+        if(isdigit(ch)) {
+            long val = ch - '0';
+            struct atom atom = {.type = VALUE, {.value = val}};
+            linkedlist_insert_end(atomlist, &atom);
+        } else if(ch == '+' || ch == '*') {
+            enum op op = (ch == '+') ? ADD : MUL;
+            struct atom atom = {.type = OP, {.op = op}};
+            linkedlist_insert_end(atomlist, &atom);
+        } else if(ch == '(') {
+            size_t next_paren = find_next_matching_paren(str, idx);
+
+            // newlen explained in other compute function
+            size_t newlen = next_paren - idx - 1;
+            long val = compute_smart(str + idx + 1, newlen);
+            struct atom atom = {.type = VALUE, {.value = val}};
+            linkedlist_insert_end(atomlist, &atom);
+
+            idx = next_paren + 1;
+            continue;
+        } else if(!isspace(ch)) {
+            char_error(str, len, idx);
+        }
+
+        idx += 1;
+    }
+
+    struct node *p = atomlist->start;
+
+    while(p != NULL) {
+        struct atom *data = p->data;
+        if(data->type != OP || data->op != ADD) {
+            p = p->next;
+            continue;
+        }
+
+        if(p->prev == NULL || p->next == NULL) {
+            eval_error(str, len);
+        }
+
+        struct atom *left = p->prev->data;
+        struct atom *right = p->next->data;
+        if(left->type != VALUE || right->type != VALUE) {
+            eval_error(str, len);
+        }
+
+        long sum = left->value + right->value;
+        linkedlist_delete(atomlist, p->prev);
+        linkedlist_delete(atomlist, p->next);
+
+        data->type = VALUE;
+        data->value = sum;
+
+        p = p->next;
+    }
+
+    long mul = 1;
+    p = atomlist->start;
+    while(p != NULL) {
+        struct atom *data = p->data;
+        if(data->type == VALUE) {
+            mul *= data->value;
+        } else {
+            if(data->op != MUL) {
+                eval_error(str, len);
+            }
+        }
+
+        p = p->next;
+    }
+
+    linkedlist_free(atomlist);
+
+    return mul;
+}
 
 static size_t find_next_matching_paren(const char *str, size_t idx) {
     int balance_counter = 1;
@@ -150,6 +242,14 @@ static void char_error(const char *str, size_t len, size_t idx) {
     printf("Error: encountered invalid character while computing the "
            "following expression: [%.*s] (ch=%c, idx=%zu)\n",
            (int)len, str, ch, idx);
+
+    exit(1);
+}
+
+static void eval_error(const char *str, size_t len) {
+    printf("Error: encountered evaluation error while computing the "
+           "following expression: [%.*s]\n",
+           (int)len, str);
 
     exit(1);
 }
