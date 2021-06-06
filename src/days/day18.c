@@ -8,21 +8,21 @@
 
 enum op { NONE, ADD, MUL };
 
-static long compute(const char *str, size_t len);
+static long compute_naive(const char *str, size_t len);
+static long compute_smart(const char *str, size_t len);
 static void char_error(const char *str, size_t len, size_t idx);
 static bool performop(long *acc, enum op *nextop, long val);
 static size_t find_next_matching_paren(const char *str, size_t idx);
 
 void day18() {
-    printf("Day 18 - Part 1\n");
-
     FILE *input = fopen("inputs/day18.txt", "r");
     if(input == NULL) {
         perror("Error opening day18.txt");
         exit(1);
     }
 
-    long sum = 0;
+    long naive_sum = 0;
+    long smart_sum = 0;
 
     char *line;
     size_t size;
@@ -30,15 +30,20 @@ void day18() {
         len; // signed because otherwise this will underflow when we're done :)
 
     while((len = getline(&line, &size, input)) > 1) { // >1 because newline
-        sum += compute(line, len - 1);                // remove the newline
+        naive_sum += compute_naive(line, len - 1); // -1 to remove the newline
+        smart_sum += compute_smart(line, len - 1);
     }
 
-    printf("The sum of all expressions is %ld\n", sum);
+    printf("Day 18 - Part 1\n"
+           "The sum of all expressions is %ld\n\n"
+           "Day 18 - Part 2\n"
+           "The sum of all expressions is %ld\n",
+           naive_sum, smart_sum);
 
     free(line);
 }
 
-static long compute(const char *str, size_t len) {
+static long compute_naive(const char *str, size_t len) {
     long acc = -1;
 
     enum op nextop = NONE;
@@ -72,7 +77,7 @@ static long compute(const char *str, size_t len) {
             // to sum up, we get len - (idx + 1 + len - next_paren)
             // = next_paren - idx - 1
             size_t newlen = next_paren - idx - 1;
-            long val = compute(str + idx + 1, newlen);
+            long val = compute_naive(str + idx + 1, newlen);
             if(!performop(&acc, &nextop, val)) {
                 char_error(str, len, idx);
             }
@@ -113,6 +118,8 @@ static bool performop(long *acc, enum op *nextop, long val) {
 
     return true;
 }
+
+static long compute_smart(const char *str, size_t len) {}
 
 static size_t find_next_matching_paren(const char *str, size_t idx) {
     int balance_counter = 1;
