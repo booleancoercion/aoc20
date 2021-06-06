@@ -196,4 +196,6 @@ static void handle_input(hashmap *map, minmax_info *mm) {
             i++;
         }
     }
+
+    fclose(input);
 }

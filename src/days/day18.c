@@ -47,6 +47,7 @@ void day18() {
            naive_sum, smart_sum);
 
     free(line);
+    fclose(input);
 }
 
 enum atomtype { OP, VALUE };
