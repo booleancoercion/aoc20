@@ -7,11 +7,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum op { NONE, ADD, MUL };
+enum op { ADD, MUL };
 
+static void build_atomlist(const char *str, size_t len,
+                           long (*compute)(const char *, size_t),
+                           struct linkedlist *atomlist);
+static bool evaluate_atoms(struct linkedlist *atomlist, bool multiplying);
+static long compute_both(const char *str, size_t len, bool smart);
 static long compute_naive(const char *str, size_t len);
 static long compute_smart(const char *str, size_t len);
-static bool performop(long *acc, enum op *nextop, long val);
 static size_t find_next_matching_paren(const char *str, size_t idx);
 static void char_error(const char *str, size_t len, size_t idx);
 static void eval_error(const char *str, size_t len);
@@ -45,82 +49,6 @@ void day18() {
     free(line);
 }
 
-static long compute_naive(const char *str, size_t len) {
-    long acc = -1;
-
-    enum op nextop = NONE;
-
-    size_t idx = 0;
-    while(idx < len) {
-        char ch = str[idx];
-
-        if(isdigit(ch)) {
-            int digit = ch - '0';
-            if(!performop(&acc, &nextop, digit)) {
-                char_error(str, len, idx);
-            }
-        } else if(ch == '+' || ch == '*') {
-            if(nextop != NONE) {
-                char_error(str, len, idx);
-            }
-
-            if(ch == '+') {
-                nextop = ADD;
-            } else {
-                nextop = MUL;
-            }
-        } else if(ch == '(') {
-            size_t next_paren = find_next_matching_paren(str, idx);
-
-            // the new length = old length, minus how many chars we've seen so
-            // far (idx+1) added to how many chars are cut off from the end
-            // (len-next_paren)
-            //
-            // to sum up, we get len - (idx + 1 + len - next_paren)
-            // = next_paren - idx - 1
-            size_t newlen = next_paren - idx - 1;
-            long val = compute_naive(str + idx + 1, newlen);
-            if(!performop(&acc, &nextop, val)) {
-                char_error(str, len, idx);
-            }
-
-            idx = next_paren + 1;
-            continue;
-        } else if(!isspace(ch)) {
-            char_error(str, len, idx);
-        }
-
-        idx += 1;
-    }
-
-    return acc;
-}
-
-static bool performop(long *acc, enum op *nextop, long val) {
-    if(*acc < 0) {
-        if(*nextop != NONE) {
-            return false;
-        }
-
-        *acc = val;
-    } else {
-        switch(*nextop) {
-        case ADD:
-            *acc += val;
-            break;
-        case MUL:
-            *acc *= val;
-            break;
-        default:
-            return false;
-        }
-
-        *nextop = NONE;
-    }
-
-    return true;
-}
-
 enum atomtype { OP, VALUE };
 
 struct atom {
@@ -131,9 +59,9 @@ struct atom {
     };
 };
 
-static long compute_smart(const char *str, size_t len) {
-    struct linkedlist *atomlist = linkedlist_init(sizeof(struct atom));
-
+static void build_atomlist(const char *str, size_t len,
+                           long (*compute)(const char *, size_t),
+                           struct linkedlist *atomlist) {
     size_t idx = 0;
     while(idx < len) {
         char ch = str[idx];
@@ -149,9 +77,14 @@ static long compute_smart(const char *str, size_t len) {
         } else if(ch == '(') {
             size_t next_paren = find_next_matching_paren(str, idx);
 
-            // newlen explained in other compute function
+            // the new length = old length, minus how many chars we've seen so
+            // far (idx+1) added to how many chars are cut off from the end
+            // (len-next_paren)
+            //
+            // to sum up, we get len - (idx + 1 + len - next_paren)
+            // = next_paren - idx - 1
             size_t newlen = next_paren - idx - 1;
-            long val = compute_smart(str + idx + 1, newlen);
+            long val = compute(str + idx + 1, newlen);
             struct atom atom = {.type = VALUE, {.value = val}};
             linkedlist_insert_end(atomlist, &atom);
 
@@ -163,54 +96,70 @@ static long compute_smart(const char *str, size_t len) {
 
         idx += 1;
     }
+}
 
+static bool evaluate_atoms(struct linkedlist *atomlist, bool multiplying) {
     struct node *p = atomlist->start;
 
     while(p != NULL) {
         struct atom *data = p->data;
-        if(data->type != OP || data->op != ADD) {
+        if(data->type != OP || (data->op != ADD && !multiplying)) {
             p = p->next;
             continue;
         }
 
         if(p->prev == NULL || p->next == NULL) {
-            eval_error(str, len);
+            return false;
         }
 
         struct atom *left = p->prev->data;
         struct atom *right = p->next->data;
         if(left->type != VALUE || right->type != VALUE) {
-            eval_error(str, len);
+            return false;
         }
 
-        long sum = left->value + right->value;
+        data->type = VALUE;
+        data->value = (data->op == ADD) ? left->value + right->value
+                                        : left->value * right->value;
         linkedlist_delete(atomlist, p->prev);
         linkedlist_delete(atomlist, p->next);
 
-        data->type = VALUE;
-        data->value = sum;
-
         p = p->next;
     }
 
-    long mul = 1;
-    p = atomlist->start;
-    while(p != NULL) {
-        struct atom *data = p->data;
-        if(data->type == VALUE) {
-            mul *= data->value;
-        } else {
-            if(data->op != MUL) {
-                eval_error(str, len);
-            }
-        }
+    return true;
+}
 
-        p = p->next;
+static long compute_both(const char *str, size_t len, bool smart) {
+    struct linkedlist *atomlist = linkedlist_init(sizeof(struct atom));
+    build_atomlist(str, len, smart ? compute_smart : compute_naive, atomlist);
+
+    // if smart is true, then we first do an evaluation of only additions.
+    // in any case, this will produce an error if any of the performed
+    // evaluations fails.
+    if((smart && !evaluate_atoms(atomlist, false)) ||
+       !evaluate_atoms(atomlist, true)) {
+        eval_error(str, len);
     }
+
+    // after evaluation, we should be left with a single node
+    struct atom *atom = atomlist->start->data;
+    if(atom->type != VALUE) {
+        eval_error(str, len);
+    }
+    long result = atom->value;
 
     linkedlist_free(atomlist);
 
-    return mul;
+    return result;
+}
+
+static long compute_naive(const char *str, size_t len) {
+    return compute_both(str, len, false);
+}
+
+static long compute_smart(const char *str, size_t len) {
+    return compute_both(str, len, true);
 }
 
 static size_t find_next_matching_paren(const char *str, size_t idx) {
