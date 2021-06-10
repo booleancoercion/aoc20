@@ -132,9 +132,9 @@ static struct rule parse_rule(const char *line, const regex_t *preg) {
     5: (PIPED) rule 4
     */
     regmatch_t matches[6];
-    char buffer[100];
     int rc;
     if((rc = regexec(preg, line, 6, matches, 0)) != 0) {
+        char buffer[100];
         regerror(rc, preg, buffer, 100);
         printf("regexec error! line=%serrbuffer=%s\n", line, buffer);
         exit(1);
