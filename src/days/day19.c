@@ -34,6 +34,26 @@ static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
 static size_t lines_until_empty(FILE *file);
 static struct rule parse_rule(const char *line, const regex_t *preg);
 
+static void print_rule(struct rule rule) {
+    switch(rule.kind) {
+    case BASIC:
+        printf("Rule(%d: \"%c\")\n", rule.num, rule.basic.ch);
+        break;
+    case ONE:
+        printf("Rule(%d: %d)\n", rule.num, rule.one.rule);
+        break;
+    case TWO:
+        printf("Rule(%d: %d %d)\n", rule.num, rule.two.rules[0],
+               rule.two.rules[1]);
+        break;
+    case PIPED:
+        printf("Rule(%d: %d %d | %d %d)\n", rule.num, rule.piped.rules[0][0],
+               rule.piped.rules[0][1], rule.piped.rules[1][0],
+               rule.piped.rules[1][1]);
+        break;
+    }
+}
+
 void day19() {
     printf("Day 19 - Part 1\n");
 
@@ -42,6 +62,11 @@ void day19() {
     char **msgs = NULL;
     size_t msgs_len = 0;
     parse(&rules, &rules_len, &msgs, &msgs_len);
+
+    for(int i = 0; i < rules_len; i++) {
+        print_rule(rules[i]);
+    }
+
     // collect messages
     // check each message, with memoization
 
@@ -52,10 +77,13 @@ void day19() {
 static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
                   size_t *msgs_len) {
     regex_t regex;
-    regcomp(&regex,
-            "(\\d+): "
-            "(?:\"(\\w)\"|(\\d+))(?:.*?(\\d+))?(?:.*?(\\d+))?(?:.*?(\\d+))?",
-            REG_EXTENDED);
+    if(regcomp(&regex,
+               "([0-9]+): \"?([0-9ab]+)\"? ?([0-9]+)? ?\\|? ?([0-9]+)? "
+               "?([0-9]+)?",
+               REG_EXTENDED) != 0) {
+        printf("regcomp error! exiting\n");
+        exit(1);
+    }
 
     FILE *input = fopen("inputs/day19.txt", "r");
 
@@ -94,39 +122,46 @@ static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
 
 static struct rule parse_rule(const char *line, const regex_t *preg) {
     /*
-    (\d+): (?:\"(\w)\"|(\d+))(?:.*?(\d+))?(?:.*?(\d+))?(?:.*?(\d+))?
+    ([0-9]+): \"?([0-9ab]+)\"? ?([0-9]+)? ?\|? ?([0-9]+)? ?([0-9]+)?
 
     0: Whole match
     1: Rule no.
-    2: (BASIC) character
-    3: (ONE/TWO/PIPED) rule 1
-    4: (TWO/PIPED) rule 2
-    5: (PIPED) rule 3
-    6: (PIPED) rule 4
+    2: (BASIC/ONE/TWO/PIPED) rule 1 / char
+    3: (TWO/PIPED) rule 2
+    4: (PIPED) rule 3
+    5: (PIPED) rule 4
     */
-    regmatch_t matches[7];
-    regexec(preg, line, 7, matches, 0);
+    regmatch_t matches[6];
+    char buffer[100];
+    int rc;
+    if((rc = regexec(preg, line, 6, matches, 0)) != 0) {
+        regerror(rc, preg, buffer, 100);
+        printf("regexec error! line=%serrbuffer=%s\n", line, buffer);
+        exit(1);
+    }
 
     struct rule rule;
     rule.num = atoi(&line[matches[1].rm_so]);
 
     // i'm sorry for this code
-    if(matches[2].rm_so != -1) {
-        rule.kind = BASIC;
-        rule.basic.ch = line[matches[2].rm_so];
+    if(matches[2].rm_so != -1 && matches[3].rm_so == -1) {
+        if(line[matches[2].rm_eo] == '"') {
+            rule.kind = BASIC;
+            rule.basic.ch = line[matches[2].rm_so];
+        } else {
+            rule.kind = ONE;
+            rule.one.rule = atoi(&line[matches[2].rm_so]);
+        }
     } else if(matches[3].rm_so != -1 && matches[4].rm_so == -1) {
-        rule.kind = ONE;
-        rule.one.rule = atoi(&line[matches[3].rm_so]);
-    } else if(matches[4].rm_so != -1 && matches[5].rm_so == -1) {
         rule.kind = TWO;
-        rule.two.rules[0] = atoi(&line[matches[3].rm_so]);
-        rule.two.rules[1] = atoi(&line[matches[4].rm_so]);
+        rule.two.rules[0] = atoi(&line[matches[2].rm_so]);
+        rule.two.rules[1] = atoi(&line[matches[3].rm_so]);
     } else {
         rule.kind = PIPED;
-        rule.piped.rules[0][0] = atoi(&line[matches[3].rm_so]);
-        rule.piped.rules[0][1] = atoi(&line[matches[4].rm_so]);
-        rule.piped.rules[1][0] = atoi(&line[matches[5].rm_so]);
-        rule.piped.rules[1][1] = atoi(&line[matches[6].rm_so]);
+        rule.piped.rules[0][0] = atoi(&line[matches[2].rm_so]);
+        rule.piped.rules[0][1] = atoi(&line[matches[3].rm_so]);
+        rule.piped.rules[1][0] = atoi(&line[matches[4].rm_so]);
+        rule.piped.rules[1][1] = atoi(&line[matches[5].rm_so]);
     }
 
     return rule;
