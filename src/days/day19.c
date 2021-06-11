@@ -29,10 +29,68 @@ struct rule {
     };
 };
 
+struct span {
+    char *base;
+    size_t start;
+    size_t end;
+};
+
+struct grm {
+    struct span span;
+    int rule;
+    bool result;
+};
+
+static int grm_compare(const void *a_void, const void *b_void, void *udata) {
+    const struct grm *a = a_void;
+    const struct grm *b = b_void;
+
+    if(a->rule < b->rule) {
+        return -1;
+    } else if(a->rule > b->rule) {
+        return 1;
+    }
+
+    size_t len_a = a->span.end - a->span.start;
+    size_t len_b = b->span.end - b->span.start;
+    size_t minlen = (len_a < len_b) ? len_a : len_b;
+
+    char *a_base = a->span.base;
+
+    char *b_base = b->span.base;
+
+    for(size_t i = 0; i < minlen; i++) {
+        char ca = a_base[a->span.start + i];
+        char cb = b_base[b->span.start + i];
+        if(ca > cb) {
+            return 1;
+        } else if(ca < cb) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static uint64_t grm_hash(const void *item_void, uint64_t seed0,
+                         uint64_t seed1) {
+    const struct grm *item = item_void;
+    size_t start = item->span.start;
+    size_t end = item->span.end;
+    char *base = item->span.base;
+    return hashmap_sip(base + start, sizeof(char) * (end - start), seed0,
+                       seed1) +
+           hashmap_sip(&(item->rule), sizeof(int), seed0, seed1);
+}
+
 static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
                   size_t *msgs_len);
 static size_t lines_until_empty(FILE *file);
 static struct rule parse_rule(const char *line, const regex_t *preg);
+static bool matches_rule(const struct span span, int rulenum,
+                         const struct rule *rules, hashmap *cache);
+static bool matches_two_rules_sliding(struct span span, int rule1, int rule2,
+                                      const struct rule *rules, hashmap *cache);
 
 static void print_rule(struct rule rule) {
     switch(rule.kind) {
@@ -63,15 +121,82 @@ void day19() {
     size_t msgs_len = 0;
     parse(&rules, &rules_len, &msgs, &msgs_len);
 
-    for(int i = 0; i < rules_len; i++) {
-        print_rule(rules[i]);
+    hashmap *cache =
+        hashmap_new(sizeof(struct grm), 0, 0, 0, grm_hash, grm_compare, NULL);
+
+    int counter = 0;
+    for(size_t i = 0; i < msgs_len; i++) {
+        char *msg = msgs[i];
+        struct span span = {.base = msg, .start = 0, .end = strlen(msg)};
+
+        if(matches_rule(span, 0, rules, cache)) {
+            counter += 1;
+        }
     }
 
-    // collect messages
-    // check each message, with memoization
-
+    hashmap_free(cache);
     free(msgs);
     free(rules);
+}
+
+static bool matches_rule(const struct span span, int rulenum,
+                         const struct rule *rules, hashmap *cache) {
+    struct grm grm = {.span = span, .rule = rulenum};
+    struct grm *lookup;
+    if((lookup = hashmap_get(cache, &grm)) != NULL) {
+        return lookup->result;
+    } else {
+        struct rule rule = rules[rulenum];
+
+        if(rule.kind == BASIC) {
+            // returning here straight away so as to not clog
+            // the cache
+            if(span.end - span.start != 1) {
+                return false;
+            } else {
+                return span.base[span.start] == rule.basic.ch;
+            }
+
+        } else if(rule.kind == ONE) {
+            grm.result = matches_rule(span, rule.one.rule, rules, cache);
+
+        } else if(rule.kind == TWO) {
+            grm.result = matches_two_rules_sliding(
+                span, rule.two.rules[0], rule.two.rules[1], rules, cache);
+
+        } else { // rule.kind == PIPED
+            grm.result = false;
+            for(int i = 0; i < 2; i++) {
+                if(matches_two_rules_sliding(span, rule.piped.rules[i][0],
+                                             rule.piped.rules[i][1], rules,
+                                             cache)) {
+                    grm.result = true;
+                    break;
+                }
+            }
+        }
+
+        hashmap_set(cache, &grm);
+        return grm.result;
+    }
+}
+
+static bool matches_two_rules_sliding(struct span span, int rule1, int rule2,
+                                      const struct rule *rules,
+                                      hashmap *cache) {
+    for(size_t cutoff = span.start; cutoff + 1 < span.end; cutoff++) {
+        struct span span1 = {
+            .base = span.base, .start = span.start, .end = cutoff + 1};
+        struct span span2 = {
+            .base = span.base, .start = cutoff + 1, .end = span.end};
+
+        if(matches_rule(span1, rule1, rules, cache) &&
+           matches_rule(span2, rule2, rules, cache)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
