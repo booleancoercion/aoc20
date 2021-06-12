@@ -62,11 +62,17 @@ static int grm_compare(const void *a_void, const void *b_void, void *udata) {
     for(size_t i = 0; i < minlen; i++) {
         char ca = a_base[a->span.start + i];
         char cb = b_base[b->span.start + i];
-        if(ca > cb) {
-            return 1;
-        } else if(ca < cb) {
+        if(ca < cb) {
             return -1;
+        } else if(ca > cb) {
+            return 1;
         }
+    }
+
+    if(len_a < len_b) {
+        return -1;
+    } else if(len_a > len_b) {
+        return 1;
     }
 
     return 0;
@@ -126,6 +132,7 @@ void day19() {
 
     int counter = 0;
     for(size_t i = 0; i < msgs_len; i++) {
+        printf("\rMessages left: %zu ", msgs_len - i);
         char *msg = msgs[i];
         struct span span = {.base = msg, .start = 0, .end = strlen(msg)};
 
@@ -134,13 +141,23 @@ void day19() {
         }
     }
 
+    printf("\rValid messages: %d\n", counter);
+
     hashmap_free(cache);
+    for(size_t i = 0; i < msgs_len; i++) {
+        free(msgs[i]);
+    }
     free(msgs);
     free(rules);
 }
 
 static bool matches_rule(const struct span span, int rulenum,
                          const struct rule *rules, hashmap *cache) {
+
+    if(span.end - span.start < 1) {
+        printf("Illegal span! Exiting");
+        exit(1);
+    }
     struct grm grm = {.span = span, .rule = rulenum};
     struct grm *lookup;
     if((lookup = hashmap_get(cache, &grm)) != NULL) {
