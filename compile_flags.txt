@@ -3,6 +3,7 @@
 -Isrc/days
 -Ilibs/hashmap
 -Ilibs/linkedlist
+-Ilibs/dynarr
 -g
 -o
 ./aoc

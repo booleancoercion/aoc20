@@ -1,12 +1,28 @@
 #include "aoc20.h"
+#include "dynarr.h"
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct dynarr dynarr;
+
+enum rulekind { BASIC, LIST, OPT };
 struct rule {
     int num;
+    enum rulekind kind;
+    union {
+        struct {
+            char ch;
+        } basic;
+        struct {
+            dynarr arr;
+        } list;
+        struct {
+            dynarr *arrs; // dynarr of dynarrs
+        } opt;
+    };
 };
 
 struct span {
