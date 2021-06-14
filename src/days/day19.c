@@ -2,6 +2,7 @@
 
 #include "aoc20.h"
 #include "dynarr.h"
+#include "hashmap.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -10,6 +11,7 @@
 #include <string.h>
 
 typedef struct dynarr dynarr;
+typedef struct hashmap hashmap;
 
 enum rulekind { BASIC, COMPOUND };
 struct rule {
@@ -24,22 +26,63 @@ struct rule {
         } compound;
     };
 };
-
 struct span {
     char *base;
     size_t start;
     size_t end;
 };
+typedef struct cached_result {
+    int rulenum;
+    struct span span;
+    bool result;
+} cached_result;
+
+static int cached_compare(const void *a_void, const void *b_void, void *udata) {
+    const cached_result *a = a_void;
+    const cached_result *b = b_void;
+
+    if(a->rulenum != b->rulenum) {
+        return (a->rulenum > b->rulenum) - (a->rulenum < b->rulenum);
+    }
+
+    size_t alen = a->span.end - a->span.start;
+    size_t blen = b->span.end - b->span.start;
+
+    int res =
+        strncmp(a->span.base + a->span.start, b->span.base + b->span.start,
+                (alen < blen) ? alen : blen);
+
+    if(res == 0) {
+        if(alen < blen) {
+            return -1;
+        } else if(alen > blen) {
+            return 1;
+        } else {
+            return 0;
+        }
+    } else {
+        return res;
+    }
+}
+
+static uint64_t cached_hash(const void *vitem, uint64_t seed0, uint64_t seed1) {
+    const cached_result *item = vitem;
+    size_t len = item->span.end - item->span.start;
+
+    return hashmap_sip(item->span.base + item->span.start, len * sizeof(char),
+                       seed0, seed1);
+}
 
 static void parse(struct rule **rules, size_t *rules_len, char ***msgs,
                   size_t *msgs_len);
 static size_t lines_until_empty(FILE *file);
 static struct rule parse_rule(const char *line);
 static bool matches_rule(const struct span span, int rulenum,
-                         const struct rule *rules);
+                         const struct rule *rules, hashmap *cachemap);
 static int count_pipes(const char *str);
 static void populate_rule_arr(dynarr *intarr, const char *line);
 
+#if 0
 static void print_rule(struct rule rule) {
     if(rule.kind == BASIC) {
         printf("Rule(%d: \"%c\")\n", rule.num, rule.basic.ch);
@@ -65,6 +108,23 @@ static void print_rule(struct rule rule) {
         }
     }
 }
+#endif
+
+static int count_matching_rules(const struct rule *rules, size_t rules_len,
+                                char **msgs, size_t msgs_len,
+                                hashmap *cachemap) {
+    int counter = 0;
+    for(size_t i = 0; i < msgs_len; i++) {
+        printf("\rMessages left: %zu ", msgs_len - i);
+        char *msg = msgs[i];
+        struct span span = {.base = msg, .start = 0, .end = strlen(msg)};
+
+        if(matches_rule(span, 0, rules, cachemap)) {
+            counter += 1;
+        }
+    }
+    return counter;
+}
 
 void day19() {
     struct rule *rules = NULL;
@@ -73,38 +133,46 @@ void day19() {
     size_t msgs_len = 0;
     parse(&rules, &rules_len, &msgs, &msgs_len);
 
-    for(size_t i = 0; i < rules_len; i++) {
-        print_rule(rules[i]);
-    }
-
-    int counter = 0;
-    for(size_t i = 0; i < msgs_len; i++) {
-        // printf("\rMessages left: %zu ", msgs_len - i);
-        char *msg = msgs[i];
-        struct span span = {.base = msg, .start = 0, .end = strlen(msg)};
-
-        if(matches_rule(span, 0, rules)) {
-            counter += 1;
-        }
-        printf("\n");
-    }
+    hashmap *cachemap = hashmap_new(sizeof(cached_result), 0, 0, 0, cached_hash,
+                                    cached_compare, NULL);
 
     printf("Day 19 - Part 1\n");
-    printf("\rValid messages: %d\n", counter);
+    printf("\rValid messages: %d\n\n",
+           count_matching_rules(rules, rules_len, msgs, msgs_len, cachemap));
+
+    hashmap_clear(cachemap, false);
+    rules[8] = parse_rule("8: 42 | 42 8\n");
+    rules[11] = parse_rule("11: 42 31 | 42 11 31\n");
+    printf("Day 19 - Part 2\n");
+    printf("\rValid messages: %d\n",
+           count_matching_rules(rules, rules_len, msgs, msgs_len, cachemap));
 
     for(size_t i = 0; i < msgs_len; i++) {
         free(msgs[i]);
     }
     free(msgs);
+    for(size_t i = 0; i < rules_len; i++) {
+        if(rules[i].kind == COMPOUND) {
+            struct rule rule = rules[i];
+            dynarr *arrays = rule.compound.arrays;
+            dynarr *arrays_array = arrays->elems;
+            for(int j = 0; j < rule.compound.arrays->len; j++) {
+                free(arrays_array[i].elems);
+            }
+            // regular free because the data has already been freed
+            dynarr_free(arrays);
+        }
+    }
     free(rules);
+    hashmap_free(cachemap);
 }
 
 static bool matches_rule_list(const struct span span, dynarr *intarr,
-                              const struct rule *rules) {
+                              const struct rule *rules, hashmap *cachemap) {
     int *arr = intarr->elems;
     int n = intarr->len;
     if(n == 1) {
-        return matches_rule(span, arr[0], rules);
+        return matches_rule(span, arr[0], rules, cachemap);
     } else {
         int *counters = calloc(n, sizeof(int));
         bool *constants = calloc(n, sizeof(bool));
@@ -113,6 +181,7 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
 
         for(int i = 0; i < n; i++) {
             int ruleno = arr[i];
+            counters[i] = 0;
             constants[i] = rules[ruleno].kind == BASIC;
             if(rules[ruleno].kind != BASIC) {
                 last_nonconst = i;
@@ -123,6 +192,8 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
         if(last_nonconst != -1) {
             counters[last_nonconst] = len - n;
         } else if(len != n) {
+            free(counters);
+            free(constants);
             return false;
         }
 
@@ -138,24 +209,34 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
                     exit(1);
                 }
 
-                if(!matches_rule(newspan, arr[i], rules)) {
+                if(!matches_rule(newspan, arr[i], rules, cachemap)) {
                     goto contwhile;
                 }
             }
+            free(counters);
+            free(constants);
             return true;
 
         contwhile:
             if(last_nonconst == -1) {
+                free(counters);
+                free(constants);
                 return false;
             }
 
             sum = 0;
+            for(int i = 0; i < last_nonconst; i++) {
+                sum += counters[i];
+            }
+
             for(int i = 0; i <= last_nonconst; i++) {
                 if(constants[i]) {
                     continue;
                 }
-                sum += counters[i];
+
                 if(i == last_nonconst) {
+                    free(counters);
+                    free(constants);
                     return false;
                 }
                 if(sum + 1 > len - n) {
@@ -164,8 +245,8 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
                     continue;
                 }
 
-                sum += 1;
                 counters[i] += 1;
+                sum += 1;
                 break;
             }
 
@@ -175,7 +256,7 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
 }
 
 static bool matches_rule_int(const struct span span, int rulenum,
-                             const struct rule *rules) {
+                             const struct rule *rules, hashmap *cachemap) {
     if(span.end - span.start < 1) {
         printf("Illegal span! (%zu->%zu) Exiting\n", span.start, span.end);
         exit(1);
@@ -192,7 +273,8 @@ static bool matches_rule_int(const struct span span, int rulenum,
         dynarr *arrays_array = arrays->elems;
         for(int option = 0; option < arrays->len; option++) {
             dynarr *intarr = &arrays_array[option];
-            if((len >= intarr->len) && matches_rule_list(span, intarr, rules)) {
+            if((len >= intarr->len) &&
+               matches_rule_list(span, intarr, rules, cachemap)) {
                 return true;
             }
         }
@@ -213,7 +295,7 @@ static void print_spaces(int level) {
 #endif
 
 static bool matches_rule(const struct span span, int rulenum,
-                         const struct rule *rules) {
+                         const struct rule *rules, hashmap *cachemap) {
 #if MATCHES_RULE_DEBUG
     static int level = 0;
 
@@ -223,7 +305,17 @@ static bool matches_rule(const struct span span, int rulenum,
            span.base + span.start);
     level += 1;
 #endif
-    bool result = matches_rule_int(span, rulenum, rules);
+    cached_result res = {.rulenum = rulenum, .span = span};
+    cached_result *get;
+    bool result;
+    if((get = hashmap_get(cachemap, &res)) != NULL) {
+        result = get->result;
+    } else {
+        result = matches_rule_int(span, rulenum, rules, cachemap);
+        res.result = result;
+        hashmap_set(cachemap, &res);
+    }
+
 #if MATCHES_RULE_DEBUG
     level -= 1;
     print_spaces(level * 4);
