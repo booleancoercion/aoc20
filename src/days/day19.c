@@ -1,3 +1,5 @@
+#define MATCHES_RULE_DEBUG 0
+
 #include "aoc20.h"
 #include "dynarr.h"
 
@@ -65,8 +67,6 @@ static void print_rule(struct rule rule) {
 }
 
 void day19() {
-    printf("Day 19 - Part 1\n");
-
     struct rule *rules = NULL;
     size_t rules_len = 0;
     char **msgs = NULL;
@@ -76,8 +76,6 @@ void day19() {
     for(size_t i = 0; i < rules_len; i++) {
         print_rule(rules[i]);
     }
-
-    return;
 
     int counter = 0;
     for(size_t i = 0; i < msgs_len; i++) {
@@ -91,6 +89,7 @@ void day19() {
         printf("\n");
     }
 
+    printf("Day 19 - Part 1\n");
     printf("\rValid messages: %d\n", counter);
 
     for(size_t i = 0; i < msgs_len; i++) {
@@ -100,6 +99,81 @@ void day19() {
     free(rules);
 }
 
+static bool matches_rule_list(const struct span span, dynarr *intarr,
+                              const struct rule *rules) {
+    int *arr = intarr->elems;
+    int n = intarr->len;
+    if(n == 1) {
+        return matches_rule(span, arr[0], rules);
+    } else {
+        int *counters = calloc(n, sizeof(int));
+        bool *constants = calloc(n, sizeof(bool));
+
+        int last_nonconst = -1;
+
+        for(int i = 0; i < n; i++) {
+            int ruleno = arr[i];
+            constants[i] = rules[ruleno].kind == BASIC;
+            if(rules[ruleno].kind != BASIC) {
+                last_nonconst = i;
+            }
+        }
+
+        int len = span.end - span.start;
+        if(last_nonconst != -1) {
+            counters[last_nonconst] = len - n;
+        } else if(len != n) {
+            return false;
+        }
+
+        struct span newspan = {.base = span.base};
+        while(true) {
+            int sum = 0;
+            for(int i = 0; i < n; i++) {
+                newspan.start = span.start + sum;
+                sum += counters[i] + 1;
+                newspan.end = span.start + sum;
+                if(newspan.end > span.end) {
+                    printf("Invalid newspan, exiting.\n");
+                    exit(1);
+                }
+
+                if(!matches_rule(newspan, arr[i], rules)) {
+                    goto contwhile;
+                }
+            }
+            return true;
+
+        contwhile:
+            if(last_nonconst == -1) {
+                return false;
+            }
+
+            sum = 0;
+            for(int i = 0; i <= last_nonconst; i++) {
+                if(constants[i]) {
+                    continue;
+                }
+                sum += counters[i];
+                if(i == last_nonconst) {
+                    return false;
+                }
+                if(sum + 1 > len - n) {
+                    sum -= counters[i];
+                    counters[i] = 0;
+                    continue;
+                }
+
+                sum += 1;
+                counters[i] += 1;
+                break;
+            }
+
+            counters[last_nonconst] = len - n - sum;
+        }
+    }
+}
+
 static bool matches_rule_int(const struct span span, int rulenum,
                              const struct rule *rules) {
     if(span.end - span.start < 1) {
@@ -107,17 +181,40 @@ static bool matches_rule_int(const struct span span, int rulenum,
         exit(1);
     }
 
-    return false;
+    struct rule rule = rules[rulenum];
+    size_t len = span.end - span.start;
+
+    if(rule.kind == BASIC) {
+        return (len == 1) && (span.base[span.start] == rule.basic.ch);
+
+    } else if(rule.kind == COMPOUND) {
+        dynarr *arrays = rule.compound.arrays;
+        dynarr *arrays_array = arrays->elems;
+        for(int option = 0; option < arrays->len; option++) {
+            dynarr *intarr = &arrays_array[option];
+            if((len >= intarr->len) && matches_rule_list(span, intarr, rules)) {
+                return true;
+            }
+        }
+
+        return false;
+    } else {
+        printf("Encountered unknown rule kind! Exiting.\n");
+        exit(1);
+    }
 }
 
+#if MATCHES_RULE_DEBUG
 static void print_spaces(int level) {
     for(int i = 0; i < level; i++) {
         printf(" ");
     }
 }
+#endif
 
 static bool matches_rule(const struct span span, int rulenum,
                          const struct rule *rules) {
+#if MATCHES_RULE_DEBUG
     static int level = 0;
 
     print_spaces(level * 4);
@@ -125,10 +222,13 @@ static bool matches_rule(const struct span span, int rulenum,
     printf("%d: %.*s\n", rulenum, (int)(span.end - span.start),
            span.base + span.start);
     level += 1;
+#endif
     bool result = matches_rule_int(span, rulenum, rules);
+#if MATCHES_RULE_DEBUG
     level -= 1;
     print_spaces(level * 4);
     printf("result: %s\n", result ? "true" : "false");
+#endif
 
     return result;
 }
