@@ -1,5 +1,3 @@
-#define MATCHES_RULE_DEBUG 0
-
 #include "aoc20.h"
 #include "dynarr.h"
 #include "hashmap.h"
@@ -82,34 +80,6 @@ static bool matches_rule(const struct span span, int rulenum,
 static int count_pipes(const char *str);
 static void populate_rule_arr(dynarr *intarr, const char *line);
 
-#if 0
-static void print_rule(struct rule rule) {
-    if(rule.kind == BASIC) {
-        printf("Rule(%d: \"%c\")\n", rule.num, rule.basic.ch);
-    } else if(rule.kind == COMPOUND) {
-        printf("Rule(%d: ", rule.num);
-
-        dynarr *arrays_array = rule.compound.arrays->elems;
-        for(int i = 0; i < rule.compound.arrays->len; i++) {
-            int *intarr = arrays_array[i].elems;
-            for(int j = 0; j < arrays_array[i].len; j++) {
-                if(j + 1 == arrays_array[i].len) {
-                    printf("%d", intarr[j]);
-                } else {
-                    printf("%d ", intarr[j]);
-                }
-            }
-
-            if(i + 1 == rule.compound.arrays->len) {
-                printf(")\n");
-            } else {
-                printf(" | ");
-            }
-        }
-    }
-}
-#endif
-
 static int count_matching_rules(const struct rule *rules, size_t rules_len,
                                 char **msgs, size_t msgs_len,
                                 hashmap *cachemap) {
@@ -124,6 +94,21 @@ static int count_matching_rules(const struct rule *rules, size_t rules_len,
         }
     }
     return counter;
+}
+
+static void free_rule(struct rule *rule) {
+    if(rule->kind == COMPOUND) {
+        dynarr *arrays = rule->compound.arrays;
+        dynarr *intarrays = arrays->elems;
+
+        for(int j = 0; j < arrays->len; j++) {
+            dynarr *intarr = &intarrays[j];
+            int *elems = intarr->elems;
+            free(elems);
+        }
+
+        dynarr_free(arrays);
+    }
 }
 
 void day19() {
@@ -141,6 +126,8 @@ void day19() {
            count_matching_rules(rules, rules_len, msgs, msgs_len, cachemap));
 
     hashmap_clear(cachemap, false);
+    free_rule(&rules[8]);
+    free_rule(&rules[11]);
     rules[8] = parse_rule("8: 42 | 42 8\n");
     rules[11] = parse_rule("11: 42 31 | 42 11 31\n");
     printf("Day 19 - Part 2\n");
@@ -152,16 +139,8 @@ void day19() {
     }
     free(msgs);
     for(size_t i = 0; i < rules_len; i++) {
-        if(rules[i].kind == COMPOUND) {
-            struct rule rule = rules[i];
-            dynarr *arrays = rule.compound.arrays;
-            dynarr *arrays_array = arrays->elems;
-            for(int j = 0; j < rule.compound.arrays->len; j++) {
-                free(arrays_array[i].elems);
-            }
-            // regular free because the data has already been freed
-            dynarr_free(arrays);
-        }
+        struct rule *rule = &rules[i];
+        free_rule(rule);
     }
     free(rules);
     hashmap_free(cachemap);
@@ -286,25 +265,9 @@ static bool matches_rule_int(const struct span span, int rulenum,
     }
 }
 
-#if MATCHES_RULE_DEBUG
-static void print_spaces(int level) {
-    for(int i = 0; i < level; i++) {
-        printf(" ");
-    }
-}
-#endif
-
 static bool matches_rule(const struct span span, int rulenum,
                          const struct rule *rules, hashmap *cachemap) {
-#if MATCHES_RULE_DEBUG
-    static int level = 0;
 
-    print_spaces(level * 4);
-
-    printf("%d: %.*s\n", rulenum, (int)(span.end - span.start),
-           span.base + span.start);
-    level += 1;
-#endif
     cached_result res = {.rulenum = rulenum, .span = span};
     cached_result *get;
     bool result;
@@ -315,12 +278,6 @@ static bool matches_rule(const struct span span, int rulenum,
         res.result = result;
         hashmap_set(cachemap, &res);
     }
-
-#if MATCHES_RULE_DEBUG
-    level -= 1;
-    print_spaces(level * 4);
-    printf("result: %s\n", result ? "true" : "false");
-#endif
 
     return result;
 }
