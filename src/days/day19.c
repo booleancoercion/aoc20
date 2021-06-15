@@ -146,6 +146,65 @@ void day19() {
     hashmap_free(cachemap);
 }
 
+static bool increment_counters(int *counters, const bool *constants,
+                               int last_nonconst, int lenn) {
+    int sum = 0;
+    for(int i = 0; i < last_nonconst; i++) {
+        sum += counters[i];
+    }
+
+    for(int i = 0; i <= last_nonconst; i++) {
+        if(i == last_nonconst) {
+            return false;
+        }
+        if(constants[i]) {
+            continue;
+        }
+        if(sum + 1 > lenn) {
+            sum -= counters[i];
+            counters[i] = 0;
+            continue;
+        }
+
+        counters[i] += 1;
+        sum += 1;
+        break;
+    }
+
+    counters[last_nonconst] = lenn - sum;
+    return true;
+}
+
+// if constants != NULL, only pays attention to the continuous starting and
+// ending constant rules. first/last_nonconst will only be used in this case.
+static bool iterate_with_counters(struct span span, const int *arr,
+                                  int *counters, bool *constants,
+                                  int first_nonconst, int last_nonconst, int n,
+                                  const struct rule *rules, hashmap *cachemap) {
+    struct span newspan = {.base = span.base};
+    int sum = 0;
+    for(int i = 0; i < n; i++) {
+        newspan.start = span.start + sum;
+        sum += counters[i] + 1;
+        newspan.end = span.start + sum;
+        if(newspan.end > span.end) {
+            printf("Invalid newspan, exiting.\n");
+            exit(1);
+        }
+
+        if(constants != NULL &&
+           (!constants[i] || (i >= first_nonconst && i <= last_nonconst))) {
+            continue;
+        }
+
+        if(!matches_rule(newspan, arr[i], rules, cachemap)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool matches_rule_list(const struct span span, dynarr *intarr,
                               const struct rule *rules, hashmap *cachemap) {
     int *arr = intarr->elems;
@@ -153,9 +212,12 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
     if(n == 1) {
         return matches_rule(span, arr[0], rules, cachemap);
     } else {
+        bool result;
+
         int *counters = calloc(n, sizeof(int));
         bool *constants = calloc(n, sizeof(bool));
 
+        int first_nonconst = -1;
         int last_nonconst = -1;
 
         for(int i = 0; i < n; i++) {
@@ -164,6 +226,9 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
             constants[i] = rules[ruleno].kind == BASIC;
             if(rules[ruleno].kind != BASIC) {
                 last_nonconst = i;
+                if(first_nonconst == -1) {
+                    first_nonconst = i;
+                }
             }
         }
 
@@ -171,66 +236,35 @@ static bool matches_rule_list(const struct span span, dynarr *intarr,
         if(last_nonconst != -1) {
             counters[last_nonconst] = len - n;
         } else if(len != n) {
-            free(counters);
-            free(constants);
-            return false;
+            result = false;
+            goto ending;
         }
 
-        struct span newspan = {.base = span.base};
+        if(!iterate_with_counters(span, arr, counters, constants,
+                                  first_nonconst, last_nonconst, n, rules,
+                                  cachemap)) {
+            result = false;
+            goto ending;
+        }
+
         while(true) {
-            int sum = 0;
-            for(int i = 0; i < n; i++) {
-                newspan.start = span.start + sum;
-                sum += counters[i] + 1;
-                newspan.end = span.start + sum;
-                if(newspan.end > span.end) {
-                    printf("Invalid newspan, exiting.\n");
-                    exit(1);
-                }
-
-                if(!matches_rule(newspan, arr[i], rules, cachemap)) {
-                    goto contwhile;
-                }
-            }
-            free(counters);
-            free(constants);
-            return true;
-
-        contwhile:
-            if(last_nonconst == -1) {
-                free(counters);
-                free(constants);
-                return false;
-            }
-
-            sum = 0;
-            for(int i = 0; i < last_nonconst; i++) {
-                sum += counters[i];
-            }
-
-            for(int i = 0; i <= last_nonconst; i++) {
-                if(constants[i]) {
-                    continue;
-                }
-
-                if(i == last_nonconst) {
-                    free(counters);
-                    free(constants);
-                    return false;
-                }
-                if(sum + 1 > len - n) {
-                    sum -= counters[i];
-                    counters[i] = 0;
-                    continue;
-                }
-
-                counters[i] += 1;
-                sum += 1;
+            if(iterate_with_counters(span, arr, counters, NULL, 0, 0, n, rules,
+                                     cachemap)) {
+                result = true;
                 break;
             }
-
-            counters[last_nonconst] = len - n - sum;
+            if(last_nonconst == -1 ||
+               !increment_counters(counters, constants, last_nonconst,
+                                   len - n)) {
+                result = false;
+                break;
+            }
         }
+
+    ending:
+        free(counters);
+        free(constants);
+        return result;
     }
 }
 
