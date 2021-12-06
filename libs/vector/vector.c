@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define VECTOR_DEFAULT_CAPACITY 16
+#define VECTOR_DEFAULT_CAPACITY 4
 
 typedef struct vector vector_t;
 
@@ -65,9 +65,9 @@ void vector_free(vector_t *vec) {
 static void vector_make_room(vector_t *vec) {
     if(vec->capacity == 0) {
         vec->capacity = VECTOR_DEFAULT_CAPACITY;
-        vec->items = calloc(vec->capacity, vec->item_size);
+        vec->items = calloc(vec->capacity * vec->item_size, vec->item_size);
     } else {
         vec->capacity *= 2;
-        vec->items = realloc(vec->items, vec->capacity);
+        vec->items = realloc(vec->items, vec->capacity * vec->item_size);
     }
 }

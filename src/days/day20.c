@@ -30,6 +30,8 @@ static edge_t flip_edge(edge_t edge);
 static edge_t *get_with_flip(hashmap_t *edges_map, edge_t *edge);
 static int count_tiles(FILE *file);
 static bool edge_vector_freer(const void *edge, void *udata);
+static long find_edge_tiles(hashmap_t *edges_map, const tile_t *tiles,
+                            size_t tiles_len, vector_t **edge_tiles);
 
 static int edge_compare(const void *a_void, const void *b_void, void *udata) {
     const edge_t *a = a_void;
@@ -56,10 +58,23 @@ void day20() {
     printf("Parsing complete; %zu tiles, %zu unique edges.\n", tiles_len,
            hashmap_count(edges_map));
 
-    long mult = 1;
+    vector_t *edge_tiles;
+    long mult = find_edge_tiles(edges_map, tiles, tiles_len, &edge_tiles);
 
+    printf("Corner tile multiplication: %ld\n", mult);
+
+    vector_free(edge_tiles);
+    free(tiles);
+    hashmap_scan(edges_map, edge_vector_freer, NULL);
+    hashmap_free(edges_map);
+}
+
+static long find_edge_tiles(hashmap_t *edges_map, const tile_t *tiles,
+                            size_t tiles_len, vector_t **edge_tiles) {
+    long mult = 1;
+    *edge_tiles = vector_init(sizeof(tile_t *));
     for(size_t i = 0; i < tiles_len; i++) {
-        tile_t *tile = &tiles[i];
+        const tile_t *tile = &tiles[i];
 
         edge_t edges[NUM_EDGES];
         get_edges(tile, edges);
@@ -78,16 +93,16 @@ void day20() {
             }
         }
 
+        if(nonmatching > 0) {
+            vector_push(*edge_tiles, &tile);
+        }
+
         if(nonmatching == 2) {
             mult *= tile->id;
         }
     }
 
-    printf("Corner tile multiplication: %ld\n", mult);
-
-    free(tiles);
-    hashmap_scan(edges_map, edge_vector_freer, NULL);
-    hashmap_free(edges_map);
+    return mult;
 }
 
 static void parse(tile_t **tiles, size_t *tiles_len, hashmap_t *edges_map) {
@@ -105,11 +120,11 @@ static void parse(tile_t **tiles, size_t *tiles_len, hashmap_t *edges_map) {
         for(int j = 0; j < NUM_EDGES; j++) {
             edge_t *edge;
             if(NULL != (edge = get_with_flip(edges_map, &edges[j]))) {
-                vector_push_unique(edge->tiles, tile);
+                vector_push_unique(edge->tiles, &tile);
             } else {
                 edge = &edges[j];
                 edge->tiles = vector_init(sizeof(tile_t *));
-                vector_push(edge->tiles, tile);
+                vector_push(edge->tiles, &tile);
 
                 hashmap_set(edges_map, edge);
             }
