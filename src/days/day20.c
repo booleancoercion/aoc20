@@ -1,4 +1,5 @@
 #include "aoc20.h"
+#include "assert.h"
 #include "hashmap.h"
 #include "vector.h"
 
@@ -50,6 +51,7 @@ void day20() {
 
     hashmap_t *edges_map =
         hashmap_new(sizeof(edge_t), 0, 0, 0, edge_hash, edge_compare, NULL);
+    assert(NULL != edges_map);
 
     tile_t *tiles;
     size_t tiles_len;
@@ -82,10 +84,7 @@ static long find_edge_tiles(hashmap_t *edges_map, const tile_t *tiles,
         int nonmatching = 0;
         for(int j = 0; j < NUM_EDGES; j++) {
             edge_t *found = get_with_flip(edges_map, &edges[j]);
-            if(NULL == found) {
-                puts("wtf");
-                exit(1);
-            }
+            assert(NULL != found);
 
             if(found->tiles->length == 1)
             { // this tile is the only tile that has this edge
@@ -141,13 +140,8 @@ static void parse_tile(FILE *input, tile_t *tile) {
     for(int i = 0; i < TILE_SIDE; i++) {
         for(int j = 0; j < TILE_SIDE; j++) {
             int c = fgetc(input);
-            if(c == EOF) {
-                puts("Encountered EOF while parsing tile! Exiting.");
-                exit(1);
-            } else if(!(c == '#' || c == '.')) {
-                puts("Encountered invalid char while parsing tile! Exiting.");
-                exit(1);
-            }
+            assert(c != EOF);
+            assert(c == '#' || c == '.');
 
             char ch = c;
             tile->info[i][j] = (ch == '#');

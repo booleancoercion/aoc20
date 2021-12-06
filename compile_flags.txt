@@ -5,6 +5,7 @@
 -Ilibs/linkedlist
 -Ilibs/dynarr
 -Ilibs/vector
+-Ilibs/assert
 -g
 -o
 ./aoc
