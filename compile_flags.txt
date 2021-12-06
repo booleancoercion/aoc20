@@ -4,6 +4,7 @@
 -Ilibs/hashmap
 -Ilibs/linkedlist
 -Ilibs/dynarr
+-Ilibs/vector
 -g
 -o
 ./aoc

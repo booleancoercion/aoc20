@@ -1,5 +1,6 @@
 #include "aoc20.h"
 #include "hashmap.h"
+#include "vector.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -10,6 +11,7 @@
 #define NUM_EDGES 4
 
 typedef struct hashmap hashmap_t;
+typedef struct vector vector_t;
 
 typedef struct tile {
     int id;
@@ -18,19 +20,27 @@ typedef struct tile {
 
 typedef struct edge {
     bool edge[TILE_SIDE];
+    vector_t *tiles;
 } edge_t;
 
-static void parse(tile_t **tiles, int *tiles_len, hashmap_t *edges_map);
+static void parse(tile_t **tiles, size_t *tiles_len, hashmap_t *edges_map);
 static void parse_tile(FILE *input, tile_t *tile);
 static void get_edges(const tile_t *tile, edge_t edges[]);
+static edge_t flip_edge(edge_t edge);
+static edge_t *get_with_flip(hashmap_t *edges_map, edge_t *edge);
 static int count_tiles(FILE *file);
+static bool edge_vector_freer(const void *edge, void *udata);
 
-static int edge_compare(const void *a, const void *b, void *udata) {
-    return memcmp(a, b, sizeof(edge_t));
+static int edge_compare(const void *a_void, const void *b_void, void *udata) {
+    const edge_t *a = a_void;
+    const edge_t *b = b_void;
+    return memcmp(&a->edge, &b->edge, sizeof(a->edge));
 }
 
-static uint64_t edge_hash(const void *item, uint64_t seed0, uint64_t seed1) {
-    return hashmap_sip(item, sizeof(edge_t), seed0, seed1);
+static uint64_t edge_hash(const void *item_void, uint64_t seed0,
+                          uint64_t seed1) {
+    const edge_t *item = item_void;
+    return hashmap_sip(&item->edge, sizeof(item->edge), seed0, seed1);
 }
 
 void day20() {
@@ -40,33 +50,47 @@ void day20() {
         hashmap_new(sizeof(edge_t), 0, 0, 0, edge_hash, edge_compare, NULL);
 
     tile_t *tiles;
-    int tiles_len;
+    size_t tiles_len;
 
     parse(&tiles, &tiles_len, edges_map);
-    printf("Parsing complete; %d tiles, %zu unique edges.\n", tiles_len,
+    printf("Parsing complete; %zu tiles, %zu unique edges.\n", tiles_len,
            hashmap_count(edges_map));
 
-    for(int i = 0; i < tiles_len; i++) {
-        edge_t edges[NUM_EDGES];
-        get_edges(&tiles[i], edges);
+    long mult = 1;
 
-        int edge_count = 0;
+    for(size_t i = 0; i < tiles_len; i++) {
+        tile_t *tile = &tiles[i];
+
+        edge_t edges[NUM_EDGES];
+        get_edges(tile, edges);
+
+        int nonmatching = 0;
         for(int j = 0; j < NUM_EDGES; j++) {
-            if(hashmap_get(edges_map, &edges[j]) == NULL) {
-                edge_count++;
+            edge_t *found = get_with_flip(edges_map, &edges[j]);
+            if(NULL == found) {
+                puts("wtf");
+                exit(1);
+            }
+
+            if(found->tiles->length == 1)
+            { // this tile is the only tile that has this edge
+                nonmatching++;
             }
         }
 
-        if(edge_count > 0) {
-            printf("Tile ID %d has edges that don't match.\n", tiles[i].id);
+        if(nonmatching == 2) {
+            mult *= tile->id;
         }
     }
 
+    printf("Corner tile multiplication: %ld\n", mult);
+
     free(tiles);
+    hashmap_scan(edges_map, edge_vector_freer, NULL);
     hashmap_free(edges_map);
 }
 
-static void parse(tile_t **tiles, int *tiles_len, hashmap_t *edges_map) {
+static void parse(tile_t **tiles, size_t *tiles_len, hashmap_t *edges_map) {
     FILE *input = fopen("inputs/day20.txt", "r");
 
     *tiles_len = count_tiles(input);
@@ -79,7 +103,16 @@ static void parse(tile_t **tiles, int *tiles_len, hashmap_t *edges_map) {
         edge_t edges[NUM_EDGES];
         get_edges(tile, edges);
         for(int j = 0; j < NUM_EDGES; j++) {
-            hashmap_set(edges_map, &edges[j]);
+            edge_t *edge;
+            if(NULL != (edge = get_with_flip(edges_map, &edges[j]))) {
+                vector_push_unique(edge->tiles, tile);
+            } else {
+                edge = &edges[j];
+                edge->tiles = vector_init(sizeof(tile_t *));
+                vector_push(edge->tiles, tile);
+
+                hashmap_set(edges_map, edge);
+            }
         }
     }
 
@@ -94,7 +127,10 @@ static void parse_tile(FILE *input, tile_t *tile) {
         for(int j = 0; j < TILE_SIDE; j++) {
             int c = fgetc(input);
             if(c == EOF) {
-                printf("Encountered EOF with parsing tile! Exiting.\n");
+                puts("Encountered EOF while parsing tile! Exiting.");
+                exit(1);
+            } else if(!(c == '#' || c == '.')) {
+                puts("Encountered invalid char while parsing tile! Exiting.");
                 exit(1);
             }
 
@@ -105,6 +141,26 @@ static void parse_tile(FILE *input, tile_t *tile) {
     }
 
     fseek(input, 1, SEEK_CUR); // ending newline
+}
+
+static edge_t flip_edge(edge_t edge) {
+    edge_t new_edge;
+    new_edge.tiles = edge.tiles;
+    for(int i = 0; i < TILE_SIDE; i++) {
+        new_edge.edge[i] = edge.edge[TILE_SIDE - i - 1];
+    }
+
+    return new_edge;
+}
+
+static edge_t *get_with_flip(hashmap_t *edges_map, edge_t *edge) {
+    edge_t *gotten;
+    if(NULL != (gotten = hashmap_get(edges_map, edge))) {
+        return gotten;
+    }
+
+    edge_t flipped = flip_edge(*edge);
+    return hashmap_get(edges_map, &flipped);
 }
 
 static void get_edges(const tile_t *tile, edge_t edges[]) {
@@ -129,4 +185,14 @@ static int count_tiles(FILE *file) {
 
     rewind(file);
     return counter;
+}
+
+static bool edge_vector_freer(const void *edge_void, void *udata) {
+    const edge_t *edge = edge_void;
+
+    if(NULL != edge->tiles) {
+        vector_free(edge->tiles);
+    }
+
+    return true;
 }
