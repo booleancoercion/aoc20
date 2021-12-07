@@ -24,6 +24,15 @@ typedef struct edge {
     vector_t *tiles;
 } edge_t;
 
+typedef struct tilematrix {
+    struct {
+        tile_t *source;
+        int rotation; // 0,1,2,3 - clockwise
+        bool flipped;
+    } * tiles;
+    size_t side;
+} tilematrix_t;
+
 static void parse(tile_t **tiles, size_t *tiles_len, hashmap_t *edges_map);
 static void parse_tile(FILE *input, tile_t *tile);
 static void get_edges(const tile_t *tile, edge_t edges[]);
@@ -46,8 +55,18 @@ static uint64_t edge_hash(const void *item_void, uint64_t seed0,
     return hashmap_sip(&item->edge, sizeof(item->edge), seed0, seed1);
 }
 
+static bool print_edge_details(const void *edge_void, void *udata) {
+    const edge_t *edge = edge_void;
+    int *counter = udata;
+
+    printf("Edge #%.3d corresponds to %zu tiles.\n", *counter,
+           edge->tiles->length);
+    *counter += 1;
+    return true;
+}
+
 void day20() {
-    printf("Day 20 - Part 1\n");
+    puts("Day 20 - Part 1");
 
     hashmap_t *edges_map =
         hashmap_new(sizeof(edge_t), 0, 0, 0, edge_hash, edge_compare, NULL);
@@ -64,6 +83,9 @@ void day20() {
     long mult = find_edge_tiles(edges_map, tiles, tiles_len, &edge_tiles);
 
     printf("Corner tile multiplication: %ld\n", mult);
+
+    int counter = 1;
+    hashmap_scan(edges_map, print_edge_details, &counter);
 
     vector_free(edge_tiles);
     free(tiles);
